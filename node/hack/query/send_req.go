@@ -251,7 +251,6 @@ func main() {
 		var isMatchingResponse bool
 		switch m := msg.Message.(type) {
 		case *gossipv1.GossipMessage_SignedQueryResponse:
-			logger.Info("query response received", zap.Any("response", m.SignedQueryResponse))
 			response, err := common.UnmarshalQueryResponsePublication(m.SignedQueryResponse.QueryResponse)
 			if err != nil {
 				logger.Warn("failed to unmarshal response", zap.Error(err))
@@ -260,15 +259,15 @@ func main() {
 			if bytes.Equal(response.Request.QueryRequest, queryRequestBytes) && bytes.Equal(response.Request.Signature, sig) {
 				// TODO: verify response signature
 				isMatchingResponse = true
-
+				
 				result, err := wethAbi.Methods[methodName].Outputs.Unpack(response.Response.Result)
 				if err != nil {
 					logger.Warn("failed to unpack result", zap.Error(err))
 					break
 				}
-
 				resultStr := hexutil.Encode(response.Response.Result)
 				logger.Info("found matching response", zap.String("number", response.Response.Number.String()), zap.String("hash", response.Response.Hash.String()), zap.String("time", response.Response.Time.String()), zap.Any("resultDecoded", result), zap.String("resultStr", resultStr))
+				logger.Info("encoded response", zap.String("response", hexutil.Encode(m.SignedQueryResponse.QueryResponse)), zap.String("signature", hexutil.Encode(m.SignedQueryResponse.Signature)), zap.String("hash", ethCrypto.Keccak256Hash(m.SignedQueryResponse.QueryResponse).String()), zap.String("digest", common.GetQueryResponseDigestFromBytes(m.SignedQueryResponse.QueryResponse).String()))
 			}
 		default:
 			continue

@@ -2,6 +2,7 @@ use borsh::{
     BorshDeserialize,
     BorshSerialize,
 };
+// serializing and desrializing the solana data account data
 use serde::{
     Deserialize,
     Serialize,

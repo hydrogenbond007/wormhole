@@ -17,7 +17,7 @@ default, but we do not rely on that property. A compromise of libp2p transport s
 denial of service attacks on the gossip network or individual nodes.
 
 Gossip network unavailability can result in missing events, but never permanently. Nodes will periodically
-attempt to retransmit signatures for VAAs which failed to reach consensus in order to mitigate short-term
+attempt to retransmit signatures for VAAs that failed to reach consensus in order to mitigate short-term
 network outages. Longer network outages, leading to timeouts, and correlated crashes of a superminority of
 nodes may result in observations being dropped.
 
@@ -31,21 +31,23 @@ given observation will always result in the same VAA body hash. All connected ch
 of whether a given VAA body - identified by its hash - has already been executed, therefore, VAAs can safely
 undergo multiple rounds of consensus until they are executed on all chains.
 
-The bridge does not yet implement chain replay (see https://github.com/wormhole-foundation/wormhole/issues/123). Network outages
-can therefore result in missed observations from chains other than Solana in the case of a prolonged network outage. It
+The bridge has implemented chain replay (see https://github.com/wormhole-foundation/wormhole/issues/123) with [PR 835](https://github.com/wormhole-foundation/wormhole/pull/835). Network outages
+do not, therefore, result in missed observations from chains other than Solana in the case of a prolonged network outage. It
 will be possible to retroactively replay blocks after chain replay has been implemented to catch up on missed events.
 
 ## Chain consistency and finality
 
 The Wormhole network always observes _external events_ and never initiates them on its own. It relies on the connected
-chain's consensus, security and finality properties. In the case of guardian set updates, it relies on off-chain
+chain's consensus, security and finality properties. Guardians run clients for every chain supported by the bridge to check state transitions, these clients could be light clients just checking the header or full participating nodes.
+In the case of guardian set updates, it relies on off-chain
 operator consensus in the same way.
 
 A non-exhaustive list of external chain properties Wormhole relies on:
 
 - It can be assumed that at some point, transactions are final and cannot be rolled back.
+  - This depends on the chain-to-chain case with chains having faster finality leaving less room for rollbacks. Transactions that are finalized in the same block are called Atomic transactions
 - A given transaction is only included/executed once in a single block, resulting in a deterministic VAA body.
-- Account data and state is permanent, by default or through a mechanism like Solana's rent exemptions.
+- Account data and state are permanent, by default or through a mechanism like Solana's rent exemptions.
 - No equivocation - there is only one valid block at a given height.
 
 ## On-chain spam prevention
@@ -53,7 +55,7 @@ A non-exhaustive list of external chain properties Wormhole relies on:
 We assume that all connected chains use a fee or similar mechanism to prevent an attacker from overwhelming the network,
 and that Wormhole's processing capacity is greater than the sum of the capacity of all connected chains.
 
-Solana has ridiculous processing capacity and can process transactions at a greater rate than what its websocket
+Solana has ridiculous processing capacity and can process transactions faster than what its websocket
 subscription interface, the agent, or the Wormhole itself could handle. This is partially mitigated by the fee that the
 Wormhole contracts charge in excess of the (very cheap) transaction fee, but a sufficiently incentivized attacker could
 still execute a sustained attack by simply paying said fee.
@@ -63,7 +65,7 @@ limitations (see https://github.com/wormhole-foundation/wormhole/issues/125). Ev
 amount that a reasonable user would pay may already constitute a successful attack against the protocol.
 
 DDoS attacks on decentralized protocols are a tricky thing in general, and mostly a matter of game theory/incentives.
-Defense strategies are dynamic and evolve as the ecosystem grows. We therefore exclude such attacks from the current
+Defense strategies are dynamic and evolve as the ecosystem grows. We, therefore, exclude such attacks from the current
 Wormhole threat model. The assumption is that the incentive to execute such an attack is less than the cost in fees and
 the legal/liability risks an attacker would incur, and that the costs to sustain the attack would be greater than simply
 attacking the connected chains directly.
@@ -85,7 +87,7 @@ proposal, and a DAO that offsets operational costs and rewards operators.
 
 ## Uncompromised hosts
 
-This should go without saying - in the context of a single node, we assume that an adversary cannot read or write host
+This should go without saying - in the context of a single node, we assume that an adversary cannot read or write hosts'
 memory, execute code, or otherwise compromise the running host operating system or platform while or after the node is
 running. If a supermajority of nodes is compromised, an attacker can produce arbitrary VAAs. If a superminority of nodes
 is compromised, the network may temporarily lose consensus (there's no way to intentionally void a guardian key or
@@ -108,7 +110,7 @@ chains it supports.
 ## Third-party libraries
 
 Like any modern software project, we rely on a number of external libraries. We applied best practices in dealing with
-such third party dependencies, including minimizing their number, avoiding binary dependencies, and using lockfiles to
+such third-party dependencies, including minimizing their number, avoiding binary dependencies, and using lockfiles to
 pin dependencies to exact versions and hashes to avoid distribution-level compromises. We assume that the third-party
 libraries we use are safe and do not contain backdoors.
 
@@ -120,9 +122,11 @@ known for its robustness - and go-ethereum, both of which have been exhaustively
 
 ## Safe handling of crashes in the Solana eBPF VM
 
-Due to the instruction count limitations in the Solana runtime, the Solana contracts makes liberal use of unsafe blocks
+Due to the instruction count limitations in the Solana runtime, the Solana contracts make liberal use of unsafe blocks
 to serialize and deserialize data without incurring the overhead of a memory-safe approach.
 
 This follows current best practices for Solana contract development. It assumes that invalid operations or out-of-bounds
 accesses will always cause a crash and be caught by the bytecode interpreter, and safely halt contract execution like
 any other error during contract execution would.
+
+In simple words: It runs all operations without worrying for memory-safety cause invalid state transitions will fail at execution on bytecode level 

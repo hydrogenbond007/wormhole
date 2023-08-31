@@ -62,13 +62,13 @@ type (
 			TxDigest *string `json:"txDigest"`
 			EventSeq *string `json:"eventSeq"`
 		} `json:"id"`
-		PackageID         *string     `json:"packageId"`
-		TransactionModule *string     `json:"transactionModule"`
-		Sender            *string     `json:"sender"`
-		Type              *string     `json:"type"`
-		Bcs               *string     `json:"bcs"`
-		Timestamp         *string     `json:"timestampMs"`
-		Fields            *FieldsData `json:"parsedJson"`
+		PackageID         *string          `json:"packageId"`
+		TransactionModule *string          `json:"transactionModule"`
+		Sender            *string          `json:"sender"`
+		Type              *string          `json:"type"`
+		Bcs               *string          `json:"bcs"`
+		Timestamp         *string          `json:"timestampMs"`
+		Fields            *json.RawMessage `json:"parsedJson"`
 	}
 
 	SuiEventError struct {
@@ -189,10 +189,19 @@ func (e *Watcher) inspectBody(logger *zap.Logger, body SuiResult) error {
 
 	if e.suiMoveEventType != *body.Type {
 		logger.Info("type mismatch", zap.String("e.suiMoveEventType", e.suiMoveEventType), zap.String("type", *body.Type))
-		return errors.New("type mismatch")
+		return nil
 	}
 
-	fields := *body.Fields
+	// Now that we know this is a wormhole event, we can unmarshal the specifics.
+	var fields FieldsData
+	err := json.Unmarshal(*body.Fields, &fields)
+	if err != nil {
+		logger.Error("failed to unmarshal FieldsData", zap.String("SuiResult.Fields", string(*body.Fields)), zap.Error(err))
+		p2p.DefaultRegistry.AddErrorCount(vaa.ChainIDSui, 1)
+		return fmt.Errorf("inspectBody failed to unmarshal FieldsData: %w", err)
+	}
+
+	// Check if all required fields exist
 	if (fields.ConsistencyLevel == nil) || (fields.Nonce == nil) || (fields.Payload == nil) || (fields.Sender == nil) || (fields.Sequence == nil) {
 		logger.Info("Missing required fields in event.")
 		return nil
@@ -267,6 +276,13 @@ func (e *Watcher) Run(ctx context.Context) error {
 
 	logger := supervisor.Logger(ctx)
 
+	// guardiand v2.16.0 shipped hardcoding "ws://" for the websocket url. This makes
+	// the flag value the same as all of the other uses of rpc websocket values.
+	err := e.fixSuiWsURL(logger)
+	if err != nil {
+		return err
+	}
+
 	logger.Info("Starting watcher",
 		zap.String("watcher_name", "sui"),
 		zap.String("suiRPC", e.suiRPC),
@@ -275,12 +291,7 @@ func (e *Watcher) Run(ctx context.Context) error {
 		zap.Bool("unsafeDevMode", e.unsafeDevMode),
 	)
 
-	u := url.URL{Scheme: "ws", Host: e.suiWS}
-
-	logger.Info("Sui watcher connecting to WS node ", zap.String("url", u.String()))
-	logger.Debug("SUI watcher:", zap.String("suiRPC", e.suiRPC), zap.String("suiWS", e.suiWS), zap.String("suiMoveEventType", e.suiMoveEventType))
-
-	ws, _, err := websocket.Dial(ctx, u.String(), nil)
+	ws, _, err := websocket.Dial(ctx, e.suiWS, nil)
 	if err != nil {
 		p2p.DefaultRegistry.AddErrorCount(vaa.ChainIDSui, 1)
 		suiConnectionErrors.WithLabelValues("websocket_dial_error").Inc()
@@ -473,7 +484,7 @@ func (e *Watcher) Run(ctx context.Context) error {
 				var res SuiTxnQuery
 				err = json.Unmarshal(body, &res)
 				if err != nil {
-					logger.Error("failed to unmarshal event message", zap.Error(err))
+					logger.Error("failed to unmarshal event message", zap.String("body", string(body)), zap.Error(err))
 					p2p.DefaultRegistry.AddErrorCount(vaa.ChainIDSui, 1)
 					return fmt.Errorf("sui__fetch_obvs_req failed to unmarshal: %w", err)
 
@@ -497,4 +508,19 @@ func (e *Watcher) Run(ctx context.Context) error {
 		_ = ws.Close(websocket.StatusInternalError, err.Error())
 		return err
 	}
+}
+
+// fixSuiWsURL ensures the websocket scheme is properly specified
+func (e *Watcher) fixSuiWsURL(logger *zap.Logger) error {
+	u, _ := url.Parse(e.suiWS)
+
+	// When the scheme is empty/nil or when the Host is empty but a scheme is set
+	if u == nil || u.Scheme == "" || (u.Scheme != "" && u.Host == "") {
+		logger.Warn(fmt.Sprintf("DEPRECATED: Prefix --suiWS address with the url scheme e.g.: ws://%s or wss://%s", e.suiWS, e.suiWS))
+		u = &url.URL{Scheme: "ws", Host: e.suiWS}
+	} else if u.Scheme != "ws" && u.Scheme != "wss" {
+		return fmt.Errorf("invalid url scheme specified for --suiWS, try ws:// or wss://: %s", e.suiWS)
+	}
+	e.suiWS = u.String()
+	return nil
 }

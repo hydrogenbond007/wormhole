@@ -1,5 +1,5 @@
 import { ethers, BigNumber } from "ethers";
-import { ChainName, CHAINS, Network } from "../../utils";
+import { ChainId, ChainName, CHAINS, Network } from "../../utils";
 import { parseVaa } from "../../vaa";
 import { getWormholeRelayer } from "../consts";
 import {
@@ -7,7 +7,8 @@ import {
   parseWormholeRelayerSend,
   parseEVMExecutionInfoV1,
 } from "../structs";
-import { vaaKeyToVaaKeyStruct, getDeliveryProvider, getVAA } from "./helpers";
+import { vaaKeyToVaaKeyStruct, getDeliveryProvider } from "./helpers";
+import { getSignedVAAWithRetry } from "../../rpc";
 
 export async function resendRaw(
   signer: ethers.Signer,
@@ -18,13 +19,19 @@ export async function resendRaw(
   newGasLimit: BigNumber | number,
   newReceiverValue: BigNumber | number,
   deliveryProviderAddress: string,
-  overrides?: ethers.PayableOverrides
-) {
+  overrides?: ethers.PayableOverrides,
+  wormholeRelayerAddress?: string
+): Promise<ethers.providers.TransactionResponse> {
   const provider = signer.provider;
 
   if (!provider) throw Error("No provider on signer");
 
-  const wormholeRelayer = getWormholeRelayer(sourceChain, environment, signer);
+  const wormholeRelayer = getWormholeRelayer(
+    sourceChain,
+    environment,
+    signer,
+    wormholeRelayerAddress
+  );
 
   return wormholeRelayer.resendToEvm(
     vaaKeyToVaaKeyStruct(vaaKey),
@@ -35,6 +42,10 @@ export async function resendRaw(
     overrides
   );
 }
+
+type ResendOptionalParams = {
+  wormholeRelayerAddress?: string;
+};
 
 export async function resend(
   signer: ethers.Signer,
@@ -47,17 +58,26 @@ export async function resend(
   deliveryProviderAddress: string,
   wormholeRPCs: string[],
   overrides: ethers.PayableOverrides,
-  isNode?: boolean
-) {
+  extraGrpcOpts = {},
+  optionalParams?: ResendOptionalParams
+): Promise<ethers.providers.TransactionResponse> {
   const targetChainId = CHAINS[targetChain];
-  const originalVAA = await getVAA(wormholeRPCs, vaaKey, isNode);
+  const originalVAA = await getSignedVAAWithRetry(
+    wormholeRPCs,
+    vaaKey.chainId as ChainId,
+    vaaKey.emitterAddress.toString("hex"),
+    vaaKey.sequence.toBigInt().toString(),
+    extraGrpcOpts,
+    2000,
+    4
+  );
 
-  if (!originalVAA) throw Error("orignal VAA not found");
+  if (!originalVAA.vaaBytes) throw Error("original VAA not found");
 
   const originalVAAparsed = parseWormholeRelayerSend(
-    parseVaa(Buffer.from(originalVAA)).payload
+    parseVaa(Buffer.from(originalVAA.vaaBytes)).payload
   );
-  if (!originalVAAparsed) throw Error("orignal VAA not a valid delivery VAA.");
+  if (!originalVAAparsed) throw Error("original VAA not a valid delivery VAA.");
 
   const [originalExecutionInfo] = parseEVMExecutionInfoV1(
     originalVAAparsed.encodedExecutionInfo,
@@ -86,10 +106,11 @@ export async function resend(
     );
   }
 
-  const wormholeRelayer = getWormholeRelayer(sourceChain, environment, signer);
-  const deliveryProvider = getDeliveryProvider(
-    deliveryProviderAddress,
-    signer.provider!
+  const wormholeRelayer = getWormholeRelayer(
+    sourceChain,
+    environment,
+    signer,
+    optionalParams?.wormholeRelayerAddress
   );
 
   const [deliveryPrice, refundPerUnitGas]: [BigNumber, BigNumber] =
@@ -123,6 +144,7 @@ export async function resend(
     newGasLimit,
     newReceiverValue,
     deliveryProviderAddress,
-    overrides
+    overrides,
+    optionalParams?.wormholeRelayerAddress
   );
 }

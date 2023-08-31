@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.10.2
+
+### Added
+
+Transfer from Aptos with payload support
+
+### Changes
+
+transferFromAptos payload type changed from string to Uint8Array
+
+## 0.9.24
+
+### Changes
+
+Transfer from Sui with payload uses oldest EmitterCap _or_ creates a new one if none exist
+
+## 0.9.23
+
+### Changes
+
+Bumped algosdk to 2.4.0
+
+## 0.9.22
+
+### Added
+
+Base mainnet contract addresses
+
+## 0.9.21
+
+### Changes
+
+Relayer status function improvements
+
+Algorand changes for 3.16.2
+
+## 0.9.20
+
+### Added
+
+Generic relayer support
+
+### Changed
+
+Updated terra.js version
+
 ## 0.9.18
 
 ### Added

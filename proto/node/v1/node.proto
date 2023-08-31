@@ -92,6 +92,12 @@ message GovernanceMessage {
     WormchainStoreCode wormchain_store_code = 14;
     WormchainInstantiateContract wormchain_instantiate_contract = 15;
     WormchainMigrateContract wormchain_migrate_contract = 16;
+    WormchainWasmInstantiateAllowlist wormchain_wasm_instantiate_allowlist = 23;
+
+    // Gateway
+    GatewayScheduleUpgrade gateway_schedule_upgrade = 24;
+    GatewayCancelUpgrade gateway_cancel_upgrade = 25;
+    GatewayIbcComposabilityMwSetContract gateway_ibc_composability_mw_set_contract = 26;
 
     // Global Accountant
     AccountantModifyBalance accountant_modify_balance = 17;
@@ -102,7 +108,7 @@ message GovernanceMessage {
     CircleIntegrationUpgradeContractImplementation circle_integration_upgrade_contract_implementation = 20;
 
     // IBC Receiver Integration
-    IbcReceiverUpdateChannelChain ibc_receiver_update_channel_chain = 21;
+    IbcUpdateChannelChain ibc_update_channel_chain = 21;
     // Wormhole Relayer module
     WormholeRelayerSetDefaultDeliveryProvider wormhole_relayer_set_default_delivery_provider = 22;
   }
@@ -224,6 +230,38 @@ message WormchainMigrateContract {
   string instantiation_msg = 3;
 }
 
+enum WormchainWasmInstantiateAllowlistAction {
+  WORMCHAIN_WASM_INSTANTIATE_ALLOWLIST_ACTION_UNSPECIFIED = 0;
+  WORMCHAIN_WASM_INSTANTIATE_ALLOWLIST_ACTION_ADD = 1;
+  WORMCHAIN_WASM_INSTANTIATE_ALLOWLIST_ACTION_DELETE = 2;
+}
+
+message WormchainWasmInstantiateAllowlist {
+  // CodeID is the reference to the stored WASM code.
+  uint64 code_id = 1;
+
+  // The address of the contract that is allowlisted to call wasm instantiate without a VAA.
+  string contract = 2;
+
+  // Specifying whether to add or delete the allowlist entry
+  WormchainWasmInstantiateAllowlistAction action = 3;
+}
+
+message GatewayIbcComposabilityMwSetContract {
+    // The address of the contract that is set in the ibc composability middleware.
+    string contract = 1;
+}
+
+message GatewayScheduleUpgrade {
+  // Name of the upgrade
+  string name = 1;
+
+  // Height of the upgrade halt
+  uint64 height = 2;
+}
+
+message GatewayCancelUpgrade {}
+
 message CircleIntegrationUpdateWormholeFinality {
   uint32 finality = 1;
   uint32 target_chain_id = 2;
@@ -241,13 +279,21 @@ message CircleIntegrationUpgradeContractImplementation {
   uint32 target_chain_id = 2;
 }
 
-message IbcReceiverUpdateChannelChain {
+enum IbcUpdateChannelChainModule {
+  IBC_UPDATE_CHANNEL_CHAIN_MODULE_UNSPECIFIED = 0;
+  IBC_UPDATE_CHANNEL_CHAIN_MODULE_RECEIVER = 1;
+  IBC_UPDATE_CHANNEL_CHAIN_MODULE_TRANSLATOR = 2;
+}
+
+message IbcUpdateChannelChain {
   // Chain ID that this governance VAA should be redeemed on
   uint32 target_chain_id = 1;
   // IBC channel ID
   string channel_id = 2;
   // ChainID corresponding to the IBC channel
   uint32 chain_id = 3;
+  // Specifying which governance module this message is for
+  IbcUpdateChannelChainModule module = 4;
 }
 
 message WormholeRelayerSetDefaultDeliveryProvider {

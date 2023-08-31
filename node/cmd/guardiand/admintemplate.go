@@ -45,9 +45,16 @@ var wormchainMigrateContractCodeId *string
 var wormchainMigrateContractContractAddress *string
 var wormchainMigrateContractInstantiationMsg *string
 
-var ibcReceiverUpdateChannelChainTargetChainId *string
-var ibcReceiverUpdateChannelChainChannelId *string
-var ibcReceiverUpdateChannelChainChainId *string
+var wormchainWasmInstantiateAllowlistCodeId *string
+var wormchainWasmInstantiateAllowlistContractAddress *string
+
+var gatewayScheduleUpgradeName *string
+var gatewayScheduleUpgradeHeight *string
+var gatewayIbcComposabilityMwContractAddress *string
+
+var ibcUpdateChannelChainTargetChainId *string
+var ibcUpdateChannelChainChannelId *string
+var ibcUpdateChannelChainChainId *string
 
 func init() {
 	governanceFlagSet := pflag.NewFlagSet("governance", pflag.ExitOnError)
@@ -118,13 +125,40 @@ func init() {
 	AdminClientWormchainMigrateContractCmd.Flags().AddFlagSet(wormchainMigrateContractFlagSet)
 	TemplateCmd.AddCommand(AdminClientWormchainMigrateContractCmd)
 
-	// flags for the ibc-receiver-update-channel-chain command
-	ibcReceiverUpdateChannelChainFlagSet := pflag.NewFlagSet("ibc-mapping", pflag.ExitOnError)
-	ibcReceiverUpdateChannelChainTargetChainId = ibcReceiverUpdateChannelChainFlagSet.String("target-chain-id", "", "Target Chain ID for the governance VAA")
-	ibcReceiverUpdateChannelChainChannelId = ibcReceiverUpdateChannelChainFlagSet.String("channel-id", "", "IBC Channel ID on Wormchain")
-	ibcReceiverUpdateChannelChainChainId = ibcReceiverUpdateChannelChainFlagSet.String("chain-id", "", "IBC Chain ID that the channel ID corresponds to")
-	AdminClientIbcReceiverUpdateChannelChainCmd.Flags().AddFlagSet(ibcReceiverUpdateChannelChainFlagSet)
+	// flags for the wormchain add/delete wasm instantiate allowlist commands
+	wormchainWasmInstantiateAllowlistFlagSet := pflag.NewFlagSet("wormchain-wasm-instantiate-allowlist", pflag.ExitOnError)
+	wormchainWasmInstantiateAllowlistCodeId = wormchainWasmInstantiateAllowlistFlagSet.String("code-id", "", "code ID of the stored code to add/delete allowlist wasm instantiate for")
+	wormchainWasmInstantiateAllowlistContractAddress = wormchainWasmInstantiateAllowlistFlagSet.String("contract-address", "", "contract address to add/delete allowlist wasm instantiate for")
+	AdminClientWormchainAddWasmInstantiateAllowlistCmd.Flags().AddFlagSet(wormchainWasmInstantiateAllowlistFlagSet)
+	AdminClientWormchainDeleteWasmInstantiateAllowlistCmd.Flags().AddFlagSet(wormchainWasmInstantiateAllowlistFlagSet)
+	TemplateCmd.AddCommand(AdminClientWormchainAddWasmInstantiateAllowlistCmd)
+	TemplateCmd.AddCommand(AdminClientWormchainDeleteWasmInstantiateAllowlistCmd)
+
+	// flags for the gateway-ibc-composability-mw-set-contract command
+	gatewayIbcComposabilityMwFlagSet := pflag.NewFlagSet("gateway-ibc-composability-mw-set-contract", pflag.ExitOnError)
+	gatewayIbcComposabilityMwContractAddress = gatewayIbcComposabilityMwFlagSet.String("contract-address", "", "contract address to set in the ibc composability middleware")
+	AdminClientGatewayIbcComposabilityMwSetContractCmd.Flags().AddFlagSet(gatewayIbcComposabilityMwFlagSet)
+	TemplateCmd.AddCommand(AdminClientGatewayIbcComposabilityMwSetContractCmd)
+
+	// flags for the gateway-schedule-upgrade command
+	gatewayScheduleUpgradeFlagSet := pflag.NewFlagSet("gateway-schedule-upgrade", pflag.ExitOnError)
+	gatewayScheduleUpgradeName = gatewayScheduleUpgradeFlagSet.String("name", "", "Scheduled upgrade name")
+	gatewayScheduleUpgradeHeight = gatewayScheduleUpgradeFlagSet.String("height", "", "Scheduled upgrade height")
+	AdminClientGatewayScheduleUpgradeCmd.Flags().AddFlagSet(gatewayScheduleUpgradeFlagSet)
+	TemplateCmd.AddCommand(AdminClientGatewayScheduleUpgradeCmd)
+
+	// AdminClientGatewayCancelUpgradeCmd doesn't have any flags
+	TemplateCmd.AddCommand(AdminClientGatewayCancelUpgradeCmd)
+
+	// flags for the ibc-receiver-update-channel-chain and ibc-translator-update-channel-chain commands
+	ibcUpdateChannelChainFlagSet := pflag.NewFlagSet("ibc-mapping", pflag.ExitOnError)
+	ibcUpdateChannelChainTargetChainId = ibcUpdateChannelChainFlagSet.String("target-chain-id", "", "Target Chain ID for the governance VAA")
+	ibcUpdateChannelChainChannelId = ibcUpdateChannelChainFlagSet.String("channel-id", "", "IBC Channel ID on Wormchain")
+	ibcUpdateChannelChainChainId = ibcUpdateChannelChainFlagSet.String("chain-id", "", "IBC Chain ID that the channel ID corresponds to")
+	AdminClientIbcReceiverUpdateChannelChainCmd.Flags().AddFlagSet(ibcUpdateChannelChainFlagSet)
+	AdminClientIbcTranslatorUpdateChannelChainCmd.Flags().AddFlagSet(ibcUpdateChannelChainFlagSet)
 	TemplateCmd.AddCommand(AdminClientIbcReceiverUpdateChannelChainCmd)
+	TemplateCmd.AddCommand(AdminClientIbcTranslatorUpdateChannelChainCmd)
 }
 
 var TemplateCmd = &cobra.Command{
@@ -192,10 +226,46 @@ var AdminClientWormchainMigrateContractCmd = &cobra.Command{
 	Run:   runWormchainMigrateContractTemplate,
 }
 
+var AdminClientWormchainAddWasmInstantiateAllowlistCmd = &cobra.Command{
+	Use:   "wormchain-add-wasm-instantiate-allowlist",
+	Short: "Generate an empty wormchain add wasm instantiate allowlist template at specified path",
+	Run:   runWormchainAddWasmInstantiateAllowlistTemplate,
+}
+
+var AdminClientWormchainDeleteWasmInstantiateAllowlistCmd = &cobra.Command{
+	Use:   "wormchain-delete-wasm-instantiate-allowlist",
+	Short: "Generate an empty wormchain delete wasm instantiate allowlist template at specified path",
+	Run:   runWormchainDeleteWasmInstantiateAllowlistTemplate,
+}
+
+var AdminClientGatewayScheduleUpgradeCmd = &cobra.Command{
+	Use:   "gateway-schedule-upgrade",
+	Short: "Schedule an upgrade on Gateway with a specified name for a specified height",
+	Run:   runGatewayScheduleUpgradeTemplate,
+}
+
+var AdminClientGatewayCancelUpgradeCmd = &cobra.Command{
+	Use:   "gateway-cancel-upgrade",
+	Short: "Cancel a scheduled upgrade on Gateway",
+	Run:   runGatewayCancelUpgradeTemplate,
+}
+
+var AdminClientGatewayIbcComposabilityMwSetContractCmd = &cobra.Command{
+	Use:   "gateway-ibc-composability-mw-set-contract",
+	Short: "Set the contract that the IBC Composability middleware will query",
+	Run:   runGatewayIbcComposabilityMwSetContractTemplate,
+}
+
 var AdminClientIbcReceiverUpdateChannelChainCmd = &cobra.Command{
 	Use:   "ibc-receiver-update-channel-chain",
 	Short: "Generate an empty ibc receiver channelId to chainId mapping update template at specified path",
 	Run:   runIbcReceiverUpdateChannelChainTemplate,
+}
+
+var AdminClientIbcTranslatorUpdateChannelChainCmd = &cobra.Command{
+	Use:   "ibc-translator-update-channel-chain",
+	Short: "Generate an empty ibc translator channelId to chainId mapping update template at specified path",
+	Run:   runIbcTranslatorUpdateChannelChainTemplate,
 }
 
 var AdminClientWormholeRelayerSetDefaultDeliveryProviderCmd = &cobra.Command{
@@ -518,7 +588,7 @@ func runWormchainInstantiateContractTemplate(cmd *cobra.Command, args []string) 
 		log.Fatal("--label must be specified.")
 	}
 	if *wormchainInstantiateContractInstantiationMsg == "" {
-		log.Fatal("--instantiate-msg must be specified.")
+		log.Fatal("--instantiation-msg must be specified.")
 	}
 
 	m := &nodev1.InjectGovernanceVAARequest{
@@ -584,26 +654,161 @@ func runWormchainMigrateContractTemplate(cmd *cobra.Command, args []string) {
 	fmt.Print(string(b))
 }
 
+func runWormchainAddWasmInstantiateAllowlistTemplate(cmd *cobra.Command, args []string) {
+	runWormchainWasmInstantiateAllowlistTemplate(nodev1.WormchainWasmInstantiateAllowlistAction_WORMCHAIN_WASM_INSTANTIATE_ALLOWLIST_ACTION_ADD)
+}
+
+func runWormchainDeleteWasmInstantiateAllowlistTemplate(cmd *cobra.Command, args []string) {
+	runWormchainWasmInstantiateAllowlistTemplate(nodev1.WormchainWasmInstantiateAllowlistAction_WORMCHAIN_WASM_INSTANTIATE_ALLOWLIST_ACTION_DELETE)
+}
+
+func runWormchainWasmInstantiateAllowlistTemplate(action nodev1.WormchainWasmInstantiateAllowlistAction) {
+	if *wormchainWasmInstantiateAllowlistCodeId == "" {
+		log.Fatal("--code-id must be specified")
+	}
+	codeId, err := strconv.ParseUint(*wormchainWasmInstantiateAllowlistCodeId, 10, 64)
+	if err != nil {
+		log.Fatal("failed to parse code-id as utin64: ", err)
+	}
+	if *wormchainWasmInstantiateAllowlistContractAddress == "" {
+		log.Fatal("--contract-address must be specified")
+	}
+
+	m := &nodev1.InjectGovernanceVAARequest{
+		CurrentSetIndex: uint32(*templateGuardianIndex),
+		Messages: []*nodev1.GovernanceMessage{
+			{
+				Sequence: rand.Uint64(),
+				Nonce:    rand.Uint32(),
+				Payload: &nodev1.GovernanceMessage_WormchainWasmInstantiateAllowlist{
+					WormchainWasmInstantiateAllowlist: &nodev1.WormchainWasmInstantiateAllowlist{
+						CodeId:   codeId,
+						Contract: *wormchainWasmInstantiateAllowlistContractAddress,
+						Action:   action,
+					},
+				},
+			},
+		},
+	}
+
+	b, err := prototext.MarshalOptions{Multiline: true}.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(b))
+}
+
+func runGatewayScheduleUpgradeTemplate(cmd *cobra.Command, args []string) {
+	if *gatewayScheduleUpgradeName == "" {
+		log.Fatal("--name must be specified")
+	}
+
+	if *gatewayScheduleUpgradeHeight == "" {
+		log.Fatal("--height must be specified")
+	}
+
+	height, err := strconv.ParseUint(*gatewayScheduleUpgradeHeight, 10, 64)
+	if err != nil {
+		log.Fatal("failed to parse height as uint64: ", err)
+	}
+
+	m := &nodev1.InjectGovernanceVAARequest{
+		CurrentSetIndex: uint32(*templateGuardianIndex),
+		Messages: []*nodev1.GovernanceMessage{
+			{
+				Sequence: rand.Uint64(),
+				Nonce:    rand.Uint32(),
+				Payload: &nodev1.GovernanceMessage_GatewayScheduleUpgrade{
+					GatewayScheduleUpgrade: &nodev1.GatewayScheduleUpgrade{
+						Name:   *gatewayScheduleUpgradeName,
+						Height: height,
+					},
+				},
+			},
+		},
+	}
+
+	b, err := prototext.MarshalOptions{Multiline: true}.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(b))
+}
+
+func runGatewayCancelUpgradeTemplate(cmd *cobra.Command, args []string) {
+	m := &nodev1.InjectGovernanceVAARequest{
+		CurrentSetIndex: uint32(*templateGuardianIndex),
+		Messages: []*nodev1.GovernanceMessage{
+			{
+				Sequence: rand.Uint64(),
+				Nonce:    rand.Uint32(),
+				Payload:  &nodev1.GovernanceMessage_GatewayCancelUpgrade{},
+			},
+		},
+	}
+
+	b, err := prototext.MarshalOptions{Multiline: true}.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(b))
+}
+
+func runGatewayIbcComposabilityMwSetContractTemplate(cmd *cobra.Command, args []string) {
+	if *gatewayIbcComposabilityMwContractAddress == "" {
+		log.Fatal("--contract-address must be specified")
+	}
+
+	m := &nodev1.InjectGovernanceVAARequest{
+		CurrentSetIndex: uint32(*templateGuardianIndex),
+		Messages: []*nodev1.GovernanceMessage{
+			{
+				Sequence: rand.Uint64(),
+				Nonce:    rand.Uint32(),
+				Payload: &nodev1.GovernanceMessage_GatewayIbcComposabilityMwSetContract{
+					GatewayIbcComposabilityMwSetContract: &nodev1.GatewayIbcComposabilityMwSetContract{
+						Contract: *gatewayIbcComposabilityMwContractAddress,
+					},
+				},
+			},
+		},
+	}
+
+	b, err := prototext.MarshalOptions{Multiline: true}.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(b))
+}
+
 func runIbcReceiverUpdateChannelChainTemplate(cmd *cobra.Command, args []string) {
-	if *ibcReceiverUpdateChannelChainTargetChainId == "" {
+	runIbcUpdateChannelChainTemplate(nodev1.IbcUpdateChannelChainModule_IBC_UPDATE_CHANNEL_CHAIN_MODULE_RECEIVER)
+}
+
+func runIbcTranslatorUpdateChannelChainTemplate(cmd *cobra.Command, args []string) {
+	runIbcUpdateChannelChainTemplate(nodev1.IbcUpdateChannelChainModule_IBC_UPDATE_CHANNEL_CHAIN_MODULE_TRANSLATOR)
+}
+
+func runIbcUpdateChannelChainTemplate(module nodev1.IbcUpdateChannelChainModule) {
+	if *ibcUpdateChannelChainTargetChainId == "" {
 		log.Fatal("--target-chain-id must be specified")
 	}
-	targetChainId, err := parseChainID(*ibcReceiverUpdateChannelChainTargetChainId)
+	targetChainId, err := parseChainID(*ibcUpdateChannelChainTargetChainId)
 	if err != nil {
 		log.Fatal("failed to parse chain id: ", err)
 	}
 
-	if *ibcReceiverUpdateChannelChainChannelId == "" {
+	if *ibcUpdateChannelChainChannelId == "" {
 		log.Fatal("--channel-id must be specified")
 	}
-	if len(*ibcReceiverUpdateChannelChainChannelId) > 64 {
+	if len(*ibcUpdateChannelChainChannelId) > 64 {
 		log.Fatal("invalid channel id length, must be <= 64")
 	}
 
-	if *ibcReceiverUpdateChannelChainChainId == "" {
+	if *ibcUpdateChannelChainChainId == "" {
 		log.Fatal("--chain-id must be specified")
 	}
-	chainId, err := parseChainID(*ibcReceiverUpdateChannelChainChainId)
+	chainId, err := parseChainID(*ibcUpdateChannelChainChainId)
 	if err != nil {
 		log.Fatal("failed to parse chain id: ", err)
 	}
@@ -614,11 +819,12 @@ func runIbcReceiverUpdateChannelChainTemplate(cmd *cobra.Command, args []string)
 			{
 				Sequence: rand.Uint64(),
 				Nonce:    rand.Uint32(),
-				Payload: &nodev1.GovernanceMessage_IbcReceiverUpdateChannelChain{
-					IbcReceiverUpdateChannelChain: &nodev1.IbcReceiverUpdateChannelChain{
+				Payload: &nodev1.GovernanceMessage_IbcUpdateChannelChain{
+					IbcUpdateChannelChain: &nodev1.IbcUpdateChannelChain{
 						TargetChainId: uint32(targetChainId),
-						ChannelId:     *ibcReceiverUpdateChannelChainChannelId,
+						ChannelId:     *ibcUpdateChannelChainChannelId,
 						ChainId:       uint32(chainId),
+						Module:        module,
 					},
 				},
 			},

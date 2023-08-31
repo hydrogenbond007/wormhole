@@ -16,6 +16,13 @@ var CoreModule = []byte{00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 
 var WasmdModule = [32]byte{00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 0x57, 0x61, 0x73, 0x6D, 0x64, 0x4D, 0x6F, 0x64, 0x75, 0x6C, 0x65}
 var WasmdModuleStr = string(WasmdModule[:])
 
+// GatewayModule is the identifier of the Gateway module (which is used for general Gateway-related governance messages)
+var GatewayModule = [32]byte{
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x47, 0x61, 0x74, 0x65, 0x77, 0x61, 0x79, 0x4d, 0x6f, 0x64, 0x75, 0x6c, 0x65,
+}
+var GatewayModuleStr = string(GatewayModule[:])
+
 // CircleIntegrationModule is the identifier of the Circle Integration module (which is used for governance messages).
 // It is the hex representation of "CircleIntegration" left padded with zeroes.
 var CircleIntegrationModule = [32]byte{
@@ -24,13 +31,21 @@ var CircleIntegrationModule = [32]byte{
 }
 var CircleIntegrationModuleStr = string(CircleIntegrationModule[:])
 
-// WasmdModule is the identifier of the Wormchain ibc_receiver contract module (which is used for governance messages)
+// IbcReceiverModule is the identifier of the Wormchain ibc_receiver contract module (which is used for governance messages)
 // It is the hex representation of "IbcReceiver" left padded with zeroes.
 var IbcReceiverModule = [32]byte{
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x62, 0x63, 0x52, 0x65, 0x63, 0x65, 0x69, 0x76, 0x65, 0x72,
 }
 var IbcReceiverModuleStr = string(IbcReceiverModule[:])
+
+// IbcTranslatorModule is the identifier of the Wormchain ibc_receiver contract module (which is used for governance messages)
+// It is the hex representation of "IbcTranslator" left padded with zeroes.
+var IbcTranslatorModule = [32]byte{
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x49, 0x62, 0x63, 0x54, 0x72, 0x61, 0x6e, 0x73, 0x6c, 0x61, 0x74, 0x6f, 0x72,
+}
+var IbcTranslatorModuleStr = string(IbcTranslatorModule[:])
 
 // WormholeRelayerModule is the identifier of the Wormhole Relayer module (which is used for governance messages).
 // It is the hex representation of "WormholeRelayer" left padded with zeroes.
@@ -51,10 +66,17 @@ var (
 	ActionCoreTransferFees   GovernanceAction = 4
 	ActionCoreRecoverChainId GovernanceAction = 5
 
-	// Wormchain cosmwasm governance actions
-	ActionStoreCode           GovernanceAction = 1
-	ActionInstantiateContract GovernanceAction = 2
-	ActionMigrateContract     GovernanceAction = 3
+	// Wormchain cosmwasm/middleware governance actions
+	ActionStoreCode                      GovernanceAction = 1
+	ActionInstantiateContract            GovernanceAction = 2
+	ActionMigrateContract                GovernanceAction = 3
+	ActionAddWasmInstantiateAllowlist    GovernanceAction = 4
+	ActionDeleteWasmInstantiateAllowlist GovernanceAction = 5
+
+	// Gateway governance actions
+	ActionScheduleUpgrade               GovernanceAction = 1
+	ActionCancelUpgrade                 GovernanceAction = 2
+	ActionSetIbcComposabilityMwContract GovernanceAction = 3
 
 	// Accountant goverance actions
 	ActionModifyBalance GovernanceAction = 1
@@ -71,6 +93,9 @@ var (
 
 	// Ibc Receiver governance actions
 	IbcReceiverActionUpdateChannelChain GovernanceAction = 1
+
+	// Ibc Translator governance actions
+	IbcTranslatorActionUpdateChannelChain GovernanceAction = 1
 
 	// Wormhole relayer governance actions
 	WormholeRelayerSetDefaultDeliveryProvider GovernanceAction = 3
@@ -131,6 +156,23 @@ type (
 		MigrationParamsHash [32]byte
 	}
 
+	// BodyWormchainAllowlistInstantiateContract is a governance message to allowlist a specific contract address to instantiate a specific wasm code id.
+	BodyWormchainWasmAllowlistInstantiate struct {
+		ContractAddr [32]byte
+		CodeId       uint64
+	}
+
+	// BodyGatewayScheduleUpgrade is a governance message to schedule an upgrade on Gateway
+	BodyGatewayScheduleUpgrade struct {
+		Name   string
+		Height uint64
+	}
+
+	// BodyGatewayIbcComposabilityMwContract is a governance message to set a specific contract (i.e. IBC Translator) for the ibc composability middleware to use
+	BodyGatewayIbcComposabilityMwContract struct {
+		ContractAddr [32]byte
+	}
+
 	// BodyCircleIntegrationUpdateWormholeFinality is a governance message to update the wormhole finality for Circle Integration.
 	BodyCircleIntegrationUpdateWormholeFinality struct {
 		TargetChainID ChainID
@@ -151,8 +193,8 @@ type (
 		NewImplementationAddress [32]byte
 	}
 
-	// BodyIbcReceiverUpdateChannelChain is a governance message to update the ibc channel_id -> chain_id mapping in the ibc_receiver contract
-	BodyIbcReceiverUpdateChannelChain struct {
+	// BodyIbcUpdateChannelChain is a governance message to update the ibc channel_id -> chain_id mapping in either of the ibc_receiver or ibc_translator contracts
+	BodyIbcUpdateChannelChain struct {
 		// The chain that this governance VAA should be redeemed on
 		TargetChainId ChainID
 
@@ -250,6 +292,56 @@ func (r BodyWormchainMigrateContract) Serialize() []byte {
 	return serializeBridgeGovernanceVaa(WasmdModuleStr, ActionMigrateContract, ChainIDWormchain, r.MigrationParamsHash[:])
 }
 
+func (r BodyWormchainWasmAllowlistInstantiate) Serialize(action GovernanceAction) []byte {
+	payload := &bytes.Buffer{}
+	payload.Write(r.ContractAddr[:])
+	MustWrite(payload, binary.BigEndian, r.CodeId)
+	return serializeBridgeGovernanceVaa(WasmdModuleStr, action, ChainIDWormchain, payload.Bytes())
+}
+
+func (r *BodyWormchainWasmAllowlistInstantiate) Deserialize(bz []byte) {
+	if len(bz) != 40 {
+		panic("incorrect payload length")
+	}
+
+	var contractAddr [32]byte
+	copy(contractAddr[:], bz[0:32])
+
+	codeId := binary.BigEndian.Uint64(bz[32:40])
+
+	r.ContractAddr = contractAddr
+	r.CodeId = codeId
+}
+
+func (r BodyGatewayIbcComposabilityMwContract) Serialize() []byte {
+	payload := &bytes.Buffer{}
+	payload.Write(r.ContractAddr[:])
+	return serializeBridgeGovernanceVaa(GatewayModuleStr, ActionSetIbcComposabilityMwContract, ChainIDWormchain, payload.Bytes())
+}
+
+func (r *BodyGatewayIbcComposabilityMwContract) Deserialize(bz []byte) {
+	if len(bz) != 32 {
+		panic("incorrect payload length")
+	}
+
+	var contractAddr [32]byte
+	copy(contractAddr[:], bz[0:32])
+
+	r.ContractAddr = contractAddr
+}
+
+func (r BodyGatewayScheduleUpgrade) Serialize() []byte {
+	payload := &bytes.Buffer{}
+	payload.Write([]byte(r.Name))
+	MustWrite(payload, binary.BigEndian, r.Height)
+	return serializeBridgeGovernanceVaa(GatewayModuleStr, ActionScheduleUpgrade, ChainIDWormchain, payload.Bytes())
+}
+
+func (r *BodyGatewayScheduleUpgrade) Deserialize(bz []byte) {
+	r.Name = string(bz[0 : len(bz)-8])
+	r.Height = binary.BigEndian.Uint64(bz[len(bz)-8:])
+}
+
 func (r BodyCircleIntegrationUpdateWormholeFinality) Serialize() []byte {
 	return serializeBridgeGovernanceVaa(CircleIntegrationModuleStr, CircleIntegrationActionUpdateWormholeFinality, r.TargetChainID, []byte{r.Finality})
 }
@@ -268,17 +360,25 @@ func (r BodyCircleIntegrationUpgradeContractImplementation) Serialize() []byte {
 	return serializeBridgeGovernanceVaa(CircleIntegrationModuleStr, CircleIntegrationActionUpgradeContractImplementation, r.TargetChainID, payload.Bytes())
 }
 
-func (r BodyIbcReceiverUpdateChannelChain) Serialize() []byte {
+func (r BodyIbcUpdateChannelChain) Serialize(module string) []byte {
+	if module != IbcReceiverModuleStr && module != IbcTranslatorModuleStr {
+		panic("module for BodyIbcUpdateChannelChain must be either IbcReceiver or IbcTranslator")
+	}
+
 	payload := &bytes.Buffer{}
 	payload.Write(r.ChannelId[:])
 	MustWrite(payload, binary.BigEndian, r.ChainId)
-	return serializeBridgeGovernanceVaa(IbcReceiverModuleStr, IbcReceiverActionUpdateChannelChain, r.TargetChainId, payload.Bytes())
+	return serializeBridgeGovernanceVaa(module, IbcReceiverActionUpdateChannelChain, r.TargetChainId, payload.Bytes())
 }
 
 func (r BodyWormholeRelayerSetDefaultDeliveryProvider) Serialize() []byte {
 	payload := &bytes.Buffer{}
 	payload.Write(r.NewDefaultDeliveryProviderAddress[:])
 	return serializeBridgeGovernanceVaa(WormholeRelayerModuleStr, WormholeRelayerSetDefaultDeliveryProvider, r.ChainID, payload.Bytes())
+}
+
+func EmptyPayloadVaa(module string, actionId GovernanceAction, chainId ChainID) []byte {
+	return serializeBridgeGovernanceVaa(module, actionId, chainId, []byte{})
 }
 
 func serializeBridgeGovernanceVaa(module string, actionId GovernanceAction, chainId ChainID, payload []byte) []byte {

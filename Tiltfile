@@ -274,7 +274,7 @@ def build_node_yaml():
             if algorand:
                 container["command"] += [
                     "--algorandAppID",
-                    "4",
+                    "1004",
                     "--algorandIndexerRPC",
                     "http://algorand:8980",
                     "--algorandIndexerToken",
@@ -302,22 +302,38 @@ def build_node_yaml():
                 container["command"] += [
                     "--wormchainURL",
                     "wormchain:9090",
-                    "--wormchainKeyPath",
+
+                    "--accountantContract",
+                    "wormhole14hj2tavq8fpesdwxxcu44rty3hh90vhujrvcmstl4zr3txmfvw9srrg465",
+                    "--accountantKeyPath",
                     "/tmp/mounted-keys/wormchain/wormchainKey",
-                    "--wormchainKeyPassPhrase",
+                    "--accountantKeyPassPhrase",
                     "test0000",
                     "--accountantWS",
                     "http://wormchain:26657",
-                    "--accountantContract",
-                    "wormhole14hj2tavq8fpesdwxxcu44rty3hh90vhujrvcmstl4zr3txmfvw9srrg465",
                     "--accountantCheckEnabled",
                     "true",
+
+                    "--ibcContract",
+                    "wormhole1nc5tatafv6eyq7llkr2gv50ff9e22mnf70qgjlv737ktmt4eswrq0kdhcj",
                     "--ibcWS",
                     "ws://wormchain:26657/websocket",
                     "--ibcLCD",
                     "http://wormchain:1317",
-                    "--ibcContract",
-                    "wormhole1nc5tatafv6eyq7llkr2gv50ff9e22mnf70qgjlv737ktmt4eswrq0kdhcj"
+
+                    "--gatewayRelayerContract",
+                    "wormhole17p9rzwnnfxcjp32un9ug7yhhzgtkhvl9jfksztgw5uh69wac2pgshdnj3k",
+                    "--gatewayRelayerKeyPath",
+                    "/tmp/mounted-keys/wormchain/wormchainKey",
+                    "--gatewayRelayerKeyPassPhrase",
+                    "test0000",
+
+                    "--gatewayContract",
+                    "wormhole17p9rzwnnfxcjp32un9ug7yhhzgtkhvl9jfksztgw5uh69wac2pgshdnj3k",
+                    "--gatewayWS",
+                    "ws://wormchain:26657/websocket",
+                    "--gatewayLCD",
+                    "http://wormchain:1317"
                 ]
 
     return encode_yaml_stream(node_yaml_with_replicas)
@@ -528,7 +544,8 @@ if generic_relayer:
         ref = "relayer-engine",
         context = ".",
         only = ["./relayer/generic_relayer", "./ethereum/ts-scripts/relayer/config"],
-        dockerfile = "relayer/generic_relayer/relayer-engine-v2/Dockerfile"
+        dockerfile = "relayer/generic_relayer/relayer-engine-v2/Dockerfile",
+        build_args = {"dev": str(not ci)}
     )
     k8s_yaml_with_ns("devnet/relayer-engine.yaml")
 

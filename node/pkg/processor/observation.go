@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	gossipv1 "github.com/certusone/wormhole/node/pkg/proto/gossip/v1"
 	"github.com/wormhole-foundation/wormhole/sdk/vaa"
@@ -46,12 +47,13 @@ var (
 
 // handleObservation processes a remote VAA observation, verifies it, checks whether the VAA has met quorum,
 // and assembles and submits a valid VAA if possible.
-func (p *Processor) handleObservation(ctx context.Context, m *gossipv1.SignedObservation) {
+func (p *Processor) handleObservation(ctx context.Context, obs *node_common.MsgWithTimeStamp[gossipv1.SignedObservation]) {
 	// SECURITY: at this point, observations received from the p2p network are fully untrusted (all fields!)
 	//
 	// Note that observations are never tied to the (verified) p2p identity key - the p2p network
 	// identity is completely decoupled from the guardian identity, p2p is just transport.
 
+	m := obs.Msg
 	hash := hex.EncodeToString(m.Hash)
 
 	p.logger.Debug("received observation",
@@ -161,6 +163,7 @@ func (p *Processor) handleObservation(ctx context.Context, m *gossipv1.SignedObs
 
 		p.state.signatures[hash] = &state{
 			firstObserved: time.Now(),
+			nextRetry:     time.Now().Add(nextRetryDuration(0)),
 			signatures:    map[common.Address][]byte{},
 			source:        "unknown",
 		}
@@ -195,7 +198,7 @@ func (p *Processor) handleObservation(ctx context.Context, m *gossipv1.SignedObs
 		// 2/3+ majority required for VAA to be valid - wait until we have quorum to submit VAA.
 		quorum := vaa.CalculateQuorum(len(gs.Keys))
 
-		p.logger.Info("aggregation state for observation",
+		p.logger.Debug("aggregation state for observation", // 1.3M out of 3M info messages / hour / guardian
 			zap.String("digest", hash),
 			zap.Any("set", gs.KeysAsHexStrings()),
 			zap.Uint32("index", gs.Index),
@@ -208,15 +211,17 @@ func (p *Processor) handleObservation(ctx context.Context, m *gossipv1.SignedObs
 		if len(sigs) >= quorum && !p.state.signatures[hash].submitted {
 			p.state.signatures[hash].ourObservation.HandleQuorum(sigs, hash, p)
 		} else {
-			p.logger.Info("quorum not met or already submitted, doing nothing",
+			p.logger.Debug("quorum not met or already submitted, doing nothing", // 1.2M out of 3M info messages / hour / guardian
 				zap.String("digest", hash))
 		}
 	} else {
-		p.logger.Info("we have not yet seen this observation - temporarily storing signature",
+		p.logger.Debug("we have not yet seen this observation - temporarily storing signature", // 175K out of 3M info messages / hour / guardian
 			zap.String("digest", hash),
 			zap.Bools("aggregation", agg))
 
 	}
+
+	observationTotalDelay.Observe(float64(time.Since(obs.Timestamp).Microseconds()))
 }
 
 func (p *Processor) handleInboundSignedVAAWithQuorum(ctx context.Context, m *gossipv1.SignedVAAWithQuorum) {
@@ -224,6 +229,16 @@ func (p *Processor) handleInboundSignedVAAWithQuorum(ctx context.Context, m *gos
 	if err != nil {
 		p.logger.Warn("received invalid VAA in SignedVAAWithQuorum message",
 			zap.Error(err), zap.Any("message", m))
+		return
+	}
+
+	// Check if we already store this VAA
+	if p.haveSignedVAA(*db.VaaIDFromVAA(v)) {
+		if p.logger.Level().Enabled(zapcore.DebugLevel) {
+			p.logger.Debug("ignored SignedVAAWithQuorum message for VAA we already stored",
+				zap.String("vaaID", string(db.VaaIDFromVAA(v).Bytes())),
+			)
+		}
 		return
 	}
 
@@ -258,23 +273,8 @@ func (p *Processor) handleInboundSignedVAAWithQuorum(ctx context.Context, m *gos
 	//  - the signature's addresses match the node's current guardian set
 	//  - enough signatures are present for the VAA to reach quorum
 
-	// Check if we already store this VAA
-	_, err = p.getSignedVAA(*db.VaaIDFromVAA(v))
-	if err == nil {
-		p.logger.Debug("ignored SignedVAAWithQuorum message for VAA we already store",
-			zap.String("digest", hash),
-		)
-		return
-	} else if err != db.ErrVAANotFound {
-		p.logger.Error("failed to look up VAA in database",
-			zap.String("digest", hash),
-			zap.Error(err),
-		)
-		return
-	}
-
 	// Store signed VAA in database.
-	p.logger.Info("storing inbound signed VAA with quorum",
+	p.logger.Debug("storing inbound signed VAA with quorum",
 		zap.String("digest", hash),
 		zap.Any("vaa", v),
 		zap.String("bytes", hex.EncodeToString(m.Vaa)),

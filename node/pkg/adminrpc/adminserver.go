@@ -18,6 +18,8 @@ import (
 
 	"github.com/certusone/wormhole/node/pkg/watchers/evm/connectors"
 	"github.com/holiman/uint256"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/exp/slices"
 
 	"github.com/certusone/wormhole/node/pkg/db"
@@ -31,12 +33,22 @@ import (
 	"github.com/certusone/wormhole/node/pkg/common"
 	nodev1 "github.com/certusone/wormhole/node/pkg/proto/node/v1"
 	"github.com/wormhole-foundation/wormhole/sdk/vaa"
+
+	sdktypes "github.com/cosmos/cosmos-sdk/types"
+)
+
+var (
+	vaaInjectionsTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "wormhole_vaa_injections_total",
+			Help: "Total number of injected VAA queued for broadcast",
+		})
 )
 
 type nodePrivilegedService struct {
 	nodev1.UnimplementedNodePrivilegedServiceServer
 	db              *db.Database
-	injectC         chan<- *vaa.VAA
+	injectC         chan<- *common.MessagePublication
 	obsvReqSendC    chan<- *gossipv1.ObservationRequest
 	logger          *zap.Logger
 	signedInC       chan<- *gossipv1.SignedVAAWithQuorum
@@ -50,7 +62,7 @@ type nodePrivilegedService struct {
 
 func NewPrivService(
 	db *db.Database,
-	injectC chan<- *vaa.VAA,
+	injectC chan<- *common.MessagePublication,
 	obsvReqSendC chan<- *gossipv1.ObservationRequest,
 	logger *zap.Logger,
 	signedInC chan<- *gossipv1.SignedVAAWithQuorum,
@@ -304,6 +316,88 @@ func wormchainMigrateContract(req *nodev1.WormchainMigrateContract, timestamp ti
 	return v, nil
 }
 
+func wormchainWasmInstantiateAllowlist(
+	req *nodev1.WormchainWasmInstantiateAllowlist,
+	timestamp time.Time,
+	guardianSetIndex uint32,
+	nonce uint32,
+	sequence uint64,
+) (*vaa.VAA, error) { //nolint:unparam // error is always nil but kept to mirror function signature of other functions
+	decodedAddr, err := sdktypes.GetFromBech32(req.Contract, "wormhole")
+	if err != nil {
+		return nil, err
+	}
+
+	var action vaa.GovernanceAction
+	if req.Action == nodev1.WormchainWasmInstantiateAllowlistAction_WORMCHAIN_WASM_INSTANTIATE_ALLOWLIST_ACTION_ADD {
+		action = vaa.ActionAddWasmInstantiateAllowlist
+	} else if req.Action == nodev1.WormchainWasmInstantiateAllowlistAction_WORMCHAIN_WASM_INSTANTIATE_ALLOWLIST_ACTION_DELETE {
+		action = vaa.ActionDeleteWasmInstantiateAllowlist
+	} else {
+		return nil, fmt.Errorf("unrecognized wasm instantiate allowlist action")
+	}
+
+	var decodedAddr32 [32]byte
+	copy(decodedAddr32[:], decodedAddr)
+
+	v := vaa.CreateGovernanceVAA(timestamp, nonce, sequence, guardianSetIndex, vaa.BodyWormchainWasmAllowlistInstantiate{
+		ContractAddr: decodedAddr32,
+		CodeId:       req.CodeId,
+	}.Serialize(action))
+
+	return v, nil
+}
+
+func gatewayScheduleUpgrade(
+	req *nodev1.GatewayScheduleUpgrade,
+	timestamp time.Time,
+	guardianSetIndex uint32,
+	nonce uint32,
+	sequence uint64,
+) (*vaa.VAA, error) { //nolint:unparam // error is always nil but kept to mirror function signature of other functions
+	v := vaa.CreateGovernanceVAA(timestamp, nonce, sequence, guardianSetIndex, vaa.BodyGatewayScheduleUpgrade{
+		Name:   req.Name,
+		Height: req.Height,
+	}.Serialize())
+
+	return v, nil
+}
+
+func gatewayCancelUpgrade(
+	timestamp time.Time,
+	guardianSetIndex uint32,
+	nonce uint32,
+	sequence uint64,
+) (*vaa.VAA, error) { //nolint:unparam // error is always nil but kept to mirror function signature of other functions
+	v := vaa.CreateGovernanceVAA(timestamp, nonce, sequence, guardianSetIndex,
+		vaa.EmptyPayloadVaa(vaa.GatewayModuleStr, vaa.ActionCancelUpgrade, vaa.ChainIDWormchain),
+	)
+
+	return v, nil
+}
+
+func gatewayIbcComposabilityMwSetContract(
+	req *nodev1.GatewayIbcComposabilityMwSetContract,
+	timestamp time.Time,
+	guardianSetIndex uint32,
+	nonce uint32,
+	sequence uint64,
+) (*vaa.VAA, error) {
+	decodedAddr, err := sdktypes.GetFromBech32(req.Contract, "wormhole")
+	if err != nil {
+		return nil, err
+	}
+
+	var decodedAddr32 [32]byte
+	copy(decodedAddr32[:], decodedAddr)
+
+	v := vaa.CreateGovernanceVAA(timestamp, nonce, sequence, guardianSetIndex, vaa.BodyGatewayIbcComposabilityMwContract{
+		ContractAddr: decodedAddr32,
+	}.Serialize())
+
+	return v, nil
+}
+
 // circleIntegrationUpdateWormholeFinality converts a nodev1.CircleIntegrationUpdateWormholeFinality to its canonical VAA representation
 // Returns an error if the data is invalid
 func circleIntegrationUpdateWormholeFinality(req *nodev1.CircleIntegrationUpdateWormholeFinality, timestamp time.Time, guardianSetIndex uint32, nonce uint32, sequence uint64) (*vaa.VAA, error) {
@@ -381,8 +475,8 @@ func circleIntegrationUpgradeContractImplementation(req *nodev1.CircleIntegratio
 	return v, nil
 }
 
-func ibcReceiverUpdateChannelChain(
-	req *nodev1.IbcReceiverUpdateChannelChain,
+func ibcUpdateChannelChain(
+	req *nodev1.IbcUpdateChannelChain,
 	timestamp time.Time,
 	guardianSetIndex uint32,
 	nonce uint32,
@@ -402,13 +496,22 @@ func ibcReceiverUpdateChannelChain(
 	}
 	channelId := vaa.LeftPadIbcChannelId(req.ChannelId)
 
+	var module string
+	if req.Module == nodev1.IbcUpdateChannelChainModule_IBC_UPDATE_CHANNEL_CHAIN_MODULE_RECEIVER {
+		module = vaa.IbcReceiverModuleStr
+	} else if req.Module == nodev1.IbcUpdateChannelChainModule_IBC_UPDATE_CHANNEL_CHAIN_MODULE_TRANSLATOR {
+		module = vaa.IbcTranslatorModuleStr
+	} else {
+		return nil, fmt.Errorf("unrecognized ibc update channel chain module")
+	}
+
 	// create governance VAA
 	v := vaa.CreateGovernanceVAA(timestamp, nonce, sequence, guardianSetIndex,
-		vaa.BodyIbcReceiverUpdateChannelChain{
+		vaa.BodyIbcUpdateChannelChain{
 			TargetChainId: vaa.ChainID(req.TargetChainId),
 			ChannelId:     channelId,
 			ChainId:       vaa.ChainID(req.ChainId),
-		}.Serialize())
+		}.Serialize(module))
 
 	return v, nil
 }
@@ -464,14 +567,22 @@ func GovMsgToVaa(message *nodev1.GovernanceMessage, currentSetIndex uint32, time
 		v, err = wormchainInstantiateContract(payload.WormchainInstantiateContract, timestamp, currentSetIndex, message.Nonce, message.Sequence)
 	case *nodev1.GovernanceMessage_WormchainMigrateContract:
 		v, err = wormchainMigrateContract(payload.WormchainMigrateContract, timestamp, currentSetIndex, message.Nonce, message.Sequence)
+	case *nodev1.GovernanceMessage_WormchainWasmInstantiateAllowlist:
+		v, err = wormchainWasmInstantiateAllowlist(payload.WormchainWasmInstantiateAllowlist, timestamp, currentSetIndex, message.Nonce, message.Sequence)
+	case *nodev1.GovernanceMessage_GatewayScheduleUpgrade:
+		v, err = gatewayScheduleUpgrade(payload.GatewayScheduleUpgrade, timestamp, currentSetIndex, message.Nonce, message.Sequence)
+	case *nodev1.GovernanceMessage_GatewayCancelUpgrade:
+		v, err = gatewayCancelUpgrade(timestamp, currentSetIndex, message.Nonce, message.Sequence)
+	case *nodev1.GovernanceMessage_GatewayIbcComposabilityMwSetContract:
+		v, err = gatewayIbcComposabilityMwSetContract(payload.GatewayIbcComposabilityMwSetContract, timestamp, currentSetIndex, message.Nonce, message.Sequence)
 	case *nodev1.GovernanceMessage_CircleIntegrationUpdateWormholeFinality:
 		v, err = circleIntegrationUpdateWormholeFinality(payload.CircleIntegrationUpdateWormholeFinality, timestamp, currentSetIndex, message.Nonce, message.Sequence)
 	case *nodev1.GovernanceMessage_CircleIntegrationRegisterEmitterAndDomain:
 		v, err = circleIntegrationRegisterEmitterAndDomain(payload.CircleIntegrationRegisterEmitterAndDomain, timestamp, currentSetIndex, message.Nonce, message.Sequence)
 	case *nodev1.GovernanceMessage_CircleIntegrationUpgradeContractImplementation:
 		v, err = circleIntegrationUpgradeContractImplementation(payload.CircleIntegrationUpgradeContractImplementation, timestamp, currentSetIndex, message.Nonce, message.Sequence)
-	case *nodev1.GovernanceMessage_IbcReceiverUpdateChannelChain:
-		v, err = ibcReceiverUpdateChannelChain(payload.IbcReceiverUpdateChannelChain, timestamp, currentSetIndex, message.Nonce, message.Sequence)
+	case *nodev1.GovernanceMessage_IbcUpdateChannelChain:
+		v, err = ibcUpdateChannelChain(payload.IbcUpdateChannelChain, timestamp, currentSetIndex, message.Nonce, message.Sequence)
 	case *nodev1.GovernanceMessage_WormholeRelayerSetDefaultDeliveryProvider:
 		v, err = wormholeRelayerSetDefaultDeliveryProvider(payload.WormholeRelayerSetDefaultDeliveryProvider, timestamp, currentSetIndex, message.Nonce, message.Sequence)
 	default:
@@ -508,7 +619,19 @@ func (s *nodePrivilegedService) InjectGovernanceVAA(ctx context.Context, req *no
 			zap.String("digest", digest.String()),
 		)
 
-		s.injectC <- v
+		vaaInjectionsTotal.Inc()
+
+		s.injectC <- &common.MessagePublication{
+			TxHash:           ethcommon.Hash{},
+			Timestamp:        v.Timestamp,
+			Nonce:            v.Nonce,
+			Sequence:         v.Sequence,
+			ConsistencyLevel: v.ConsistencyLevel,
+			EmitterChain:     v.EmitterChain,
+			EmitterAddress:   v.EmitterAddress,
+			Payload:          v.Payload,
+			Unreliable:       false,
+		}
 
 		digests[i] = digest.Bytes()
 	}

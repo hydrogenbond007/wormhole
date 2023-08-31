@@ -37,6 +37,11 @@ const TESTNET: { [K in ChainName]?: AddressInfo } = {
     mockDeliveryProviderAddress: "0x60a86b97a7596eBFd25fb769053894ed0D9A8366",
     mockIntegrationAddress: "0x3bF0c43d88541BBCF92bE508ec41e540FbF28C56",
   },
+  base: {
+    wormholeRelayerAddress: "0xea8029CD7FCAEFFcD1F53686430Db0Fc8ed384E1",
+    mockDeliveryProviderAddress: "0x60a86b97a7596eBFd25fb769053894ed0D9A8366",
+    mockIntegrationAddress: "0x9Ee656203B0DC40cc1bA3f4738527779220e3998",
+  },
 };
 
 const DEVNET: { [K in ChainName]?: AddressInfo } = {
@@ -89,6 +94,9 @@ const MAINNET: { [K in ChainName]?: AddressInfo } = {
   optimism: {
     wormholeRelayerAddress: "0x27428DD2d3DD32A4D7f7C497eAaa23130d894911",
   },
+  base: {
+    wormholeRelayerAddress: "0x706f82e9bb5b0813501714ab5974216704980e31",
+  },
 };
 
 export const RELAYER_CONTRACTS = { MAINNET, TESTNET, DEVNET };
@@ -133,8 +141,8 @@ export const RPCS_BY_CHAIN: {
   [key in Network]: { [key in ChainName]?: string };
 } = {
   MAINNET: {
-    ethereum: process.env.ETH_RPC,
-    bsc: process.env.BSC_RPC || "https://bsc-dataseed2.defibit.io",
+    ethereum: "https://rpc.ankr.com/eth",
+    bsc: "https://bsc-dataseed2.defibit.io",
     polygon: "https://rpc.ankr.com/polygon",
     avalanche: "https://rpc.ankr.com/avalanche",
     oasis: "https://emerald.oasis.dev",
@@ -154,13 +162,13 @@ export const RPCS_BY_CHAIN: {
     terra2: "https://phoenix-lcd.terra.dev",
     terra: "https://columbus-fcd.terra.dev",
     injective: "https://k8s.mainnet.lcd.injective.network",
-    solana: process.env.SOLANA_RPC ?? "https://api.mainnet-beta.solana.com",
+    solana: "https://api.mainnet-beta.solana.com",
   },
   TESTNET: {
     solana: "https://api.devnet.solana.com",
     terra: "https://bombay-lcd.terra.dev",
     ethereum: "https://rpc.ankr.com/eth_goerli",
-    bsc: "https://data-seed-prebsc-1-s1.binance.org:8545",
+    bsc: "https://bsc-testnet.publicnode.com",
     polygon: "https://rpc.ankr.com/polygon_mumbai",
     avalanche: "https://rpc.ankr.com/avalanche_fuji",
     oasis: "https://testnet.emerald.oasis.dev",
@@ -182,6 +190,7 @@ export const RPCS_BY_CHAIN: {
     arbitrum: "https://goerli-rollup.arbitrum.io/rpc",
     optimism: "https://goerli.optimism.io",
     gnosis: "https://sokol.poa.network/",
+    rootstock: "https://public-node.rsk.co",
   },
   DEVNET: {
     ethereum: "http://localhost:8545",

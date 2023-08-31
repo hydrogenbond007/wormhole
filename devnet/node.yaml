@@ -103,6 +103,8 @@ spec:
             - ws://eth-devnet:8545
             - --neonRPC
             - ws://eth-devnet:8545
+            - --baseRPC
+            - ws://eth-devnet:8545
             # - --wormchainURL
             # - wormchain:9090
             # - --wormchainKeyPath
@@ -127,7 +129,7 @@ spec:
             # - --terra2Contract
             # - terra14hj2tavq8fpesdwxxcu44rty3hh90vhujrvcmstl4zr3txmfvw9ssrc8au
             # - --algorandAppID
-            # - "4"
+            # - "1004"
             # - --algorandIndexerRPC
             # - http://algorand:8980
             # - --algorandIndexerToken

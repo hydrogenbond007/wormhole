@@ -17,7 +17,6 @@ import (
 	"github.com/certusone/wormhole/node/pkg/processor"
 	gossipv1 "github.com/certusone/wormhole/node/pkg/proto/gossip/v1"
 	"github.com/certusone/wormhole/node/pkg/readiness"
-	"github.com/certusone/wormhole/node/pkg/reporter"
 	"github.com/certusone/wormhole/node/pkg/supervisor"
 	"github.com/certusone/wormhole/node/pkg/watchers"
 	"github.com/certusone/wormhole/node/pkg/watchers/ibc"
@@ -316,7 +315,7 @@ func GuardianOptionWatchers(watcherConfigs []watchers.WatcherConfig, ibcWatcherC
 					common.MustRegisterReadinessSyncing(wc.GetChainID())
 				}
 
-				chainObsvReqC[wc.GetChainID()] = make(chan *gossipv1.ObservationRequest, observationRequestBufferSize)
+				chainObsvReqC[wc.GetChainID()] = make(chan *gossipv1.ObservationRequest, observationRequestPerChainBufferSize)
 
 				if wc.RequiredL1Finalizer() != "" {
 					l1watcher, ok := watchers[wc.RequiredL1Finalizer()]
@@ -352,7 +351,7 @@ func GuardianOptionWatchers(watcherConfigs []watchers.WatcherConfig, ibcWatcherC
 						continue
 					}
 
-					chainObsvReqC[chainID] = make(chan *gossipv1.ObservationRequest, observationRequestBufferSize)
+					chainObsvReqC[chainID] = make(chan *gossipv1.ObservationRequest, observationRequestPerChainBufferSize)
 					common.MustRegisterReadinessSyncing(chainID)
 
 					chainConfig = append(chainConfig, ibc.ChainConfigEntry{
@@ -453,15 +452,6 @@ func GuardianOptionPublicWeb(listenAddr string, publicGRPCSocketPath string, tls
 		}}
 }
 
-func GuardianOptionBigTablePersistence(config *reporter.BigTableConnectionConfig) *GuardianOption {
-	return &GuardianOption{
-		name: "bigtable",
-		f: func(ctx context.Context, logger *zap.Logger, g *G) error {
-			g.runnables["bigtable"] = reporter.BigTableWriter(g.attestationEvents, config)
-			return nil
-		}}
-}
-
 // GuardianOptionDatabase configures the main database to be used for this guardian node.
 // Dependencies: none
 func GuardianOptionDatabase(db *db.Database) *GuardianOption {
@@ -493,7 +483,6 @@ func GuardianOptionProcessor() *GuardianOption {
 				g.signedInC.readC,
 				g.gk,
 				g.gst,
-				g.attestationEvents,
 				g.gov,
 				g.acct,
 				g.acctC.readC,

@@ -289,7 +289,7 @@ func (w *Watcher) Run(parentCtx context.Context) error {
 	} else if w.chainID == vaa.ChainIDOptimism && !w.unsafeDevMode {
 		// This only supports Bedrock mode
 		useFinalizedBlocks = true
-		safeBlocksSupported := true
+		safeBlocksSupported = true
 		logger.Info("using finalized blocks, will publish safe blocks")
 		baseConnector, err := connectors.NewEthereumConnector(timeout, w.networkName, w.url, w.contract, logger)
 		if err != nil {
@@ -321,13 +321,15 @@ func (w *Watcher) Run(parentCtx context.Context) error {
 			return fmt.Errorf("failed to create polygon connector: %w", err)
 		}
 	} else if w.chainID == vaa.ChainIDBase && !w.unsafeDevMode {
+		useFinalizedBlocks = true
+		safeBlocksSupported = true
 		baseConnector, err := connectors.NewEthereumConnector(timeout, w.networkName, w.url, w.contract, logger)
 		if err != nil {
 			ethConnectionErrors.WithLabelValues(w.networkName, "dial_error").Inc()
 			p2p.DefaultRegistry.AddErrorCount(w.chainID, 1)
 			return fmt.Errorf("dialing eth client failed: %w", err)
 		}
-		w.ethConn, err = connectors.NewBlockPollConnector(ctx, baseConnector, finalizers.NewDefaultFinalizer(), 250*time.Millisecond, true, true)
+		w.ethConn, err = connectors.NewBlockPollConnector(ctx, baseConnector, finalizers.NewDefaultFinalizer(), 250*time.Millisecond, useFinalizedBlocks, safeBlocksSupported)
 		if err != nil {
 			ethConnectionErrors.WithLabelValues(w.networkName, "dial_error").Inc()
 			p2p.DefaultRegistry.AddErrorCount(w.chainID, 1)
@@ -421,6 +423,7 @@ func (w *Watcher) Run(parentCtx context.Context) error {
 				}
 
 				for _, msg := range msgs {
+					msg.IsReobservation = true
 					if msg.ConsistencyLevel == vaa.ConsistencyLevelPublishImmediately {
 						logger.Info("re-observed message publication transaction, publishing it immediately",
 							zap.Stringer("tx", msg.TxHash),
@@ -631,7 +634,6 @@ func (w *Watcher) Run(parentCtx context.Context) error {
 					zap.Stringer("current_blockhash", currentHash),
 					zap.Bool("is_safe_block", ev.Safe),
 					zap.String("eth_network", w.networkName))
-				currentEthHeight.WithLabelValues(w.networkName).Set(float64(ev.Number.Int64()))
 				readiness.SetReady(w.readinessSync)
 				p2p.DefaultRegistry.SetNetworkStats(w.chainID, &gossipv1.Heartbeat_Network{
 					Height:          ev.Number.Int64(),
@@ -646,6 +648,7 @@ func (w *Watcher) Run(parentCtx context.Context) error {
 				} else {
 					atomic.StoreUint64(&currentBlockNumber, blockNumberU)
 					atomic.StoreUint64(&w.latestFinalizedBlockNumber, blockNumberU)
+					currentEthHeight.WithLabelValues(w.networkName).Set(float64(ev.Number.Int64()))
 				}
 
 				for key, pLock := range w.pending {

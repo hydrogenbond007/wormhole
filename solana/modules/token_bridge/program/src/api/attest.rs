@@ -86,6 +86,26 @@ impl<'a> From<&AttestToken<'a>> for SplTokenMetaDerivationData {
 pub struct AttestTokenData {
     pub nonce: u32,
 }
+#[derive(Debug, PartialEq)]
+pub enum AttestationTokenError {
+    UninitializedWrappedMetadata,
+    EmptySplTokenMetadata,
+    InvalidSplTokenMetadata,
+    TransferError,
+    MessagePostingError,
+}
+
+impl From<AttestationTokenError> for SolitaireError {
+    fn from(err: AttestationTokenError) -> Self {
+        match err {
+            AttestationTokenError::UninitializedWrappedMetadata => SolitaireError::CustomError("Wrapped token metadata must be uninitialized.".to_string()),
+            AttestationTokenError::EmptySplTokenMetadata => SolitaireError::CustomError("SPL token metadata is empty and must be initialized.".to_string()),
+            AttestationTokenError::InvalidSplTokenMetadata => SolitaireError::CustomError("SPL token metadata is invalid or could not be deserialized.".to_string()),
+            AttestationTokenError::TransferError => SolitaireError::CustomError("Failed to transfer the fee.".to_string()),
+            AttestationTokenError::MessagePostingError => SolitaireError::CustomError("Failed to post the message.".to_string()),
+        }
+    }
+}
 
 pub fn attest_token(
     ctx: &ExecutionContext,
@@ -99,12 +119,14 @@ pub fn attest_token(
         accs.bridge.config.fee,
     );
 
-    invoke(&transfer_ix, ctx.accounts)?;
+    // Handle the result of the transfer operation with a custom error message if it fails.
+    invoke(&transfer_ix, ctx.accounts)
+        .map_err(|_| AttestationTokenError::TransferError.into())?;
 
-    // Enfoce wrapped meta to be uninitialized.
-    let derivation_data: WrappedMetaDerivationData = (&*accs).into();
-    accs.wrapped_meta
-        .verify_derivation(ctx.program_id, &derivation_data)?;
+    // Ensure the wrapped token metadata is uninitialized.
+    if accs.wrapped_meta.is_initialized() {
+        return Err(AttestationTokenError::UninitializedWrappedMetadata.into());
+    }
 
     // Create Asset Metadata
     let mut payload = PayloadAssetMeta {

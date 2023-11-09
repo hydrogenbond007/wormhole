@@ -1843,7 +1843,7 @@ contract WormholeRelayerTests is Test {
         );
     }
 
-    function testRevertDeliveryWithOverrideMaximumRefund(
+    function testAllowDeliveryWithOverrideMaximumRefund(
         GasParameters memory gasParams,
         FeeParameters memory feeParams,
         bytes memory message
@@ -1877,7 +1877,6 @@ contract WormholeRelayerTests is Test {
             stack.deliveryVaaHash //really redeliveryHash
         );
 
-        vm.expectRevert(abi.encodeWithSignature("InvalidOverrideRefundPerGasUnused()"));
         setup.target.coreRelayerFull.deliver{value: stack.budget}(
             stack.encodedVMs,
             stack.encodedDeliveryVAA,
@@ -2212,5 +2211,72 @@ contract WormholeRelayerTests is Test {
         assertTrue(
             keccak256(setup.target.integration.getMessage()) == keccak256(message), "payload wrong"
         );
+    }
+
+    function testProviderRefundAddressZeros(
+        GasParameters memory gasParams,
+        FeeParameters memory feeParams,
+        bytes memory message
+    ) public {
+        StandardSetupTwoChains memory setup = standardAssumeAndSetupTwoChains(
+            gasParams,
+            feeParams,
+            1000000
+        );
+        vm.recordLogs();
+        setup.source.deliveryProvider.updateTargetChainAddress(
+            setup.targetChain,
+            bytes32(0x0)
+        );
+        (LocalNative deliveryCost, ) = setup
+            .source
+            .coreRelayer
+            .quoteEVMDeliveryPrice(
+                setup.targetChain,
+                TargetNative.wrap(0),
+                Gas.wrap(gasParams.targetGasLimit)
+            );
+        setup.source.integration.sendMessageWithRefund{
+            value: LocalNative.unwrap(deliveryCost)
+        }(
+            message,
+            setup.targetChain,
+            gasParams.targetGasLimit,
+            0,
+            setup.sourceChain,
+            address(this)
+        );
+        genericRelayer.relay(setup.sourceChain);
+    }
+
+    function testSendTargetAddressZeros(
+        GasParameters memory gasParams,
+        FeeParameters memory feeParams,
+        bytes memory message
+    ) public {
+        StandardSetupTwoChains memory setup = standardAssumeAndSetupTwoChains(
+            gasParams,
+            feeParams,
+            1000000
+        );
+        vm.recordLogs();
+        (LocalNative deliveryCost, ) = setup
+            .source
+            .coreRelayer
+            .quoteEVMDeliveryPrice(
+                setup.targetChain,
+                TargetNative.wrap(25),
+                Gas.wrap(gasParams.targetGasLimit)
+            );
+        setup.source.coreRelayer.sendPayloadToEvm{
+            value: LocalNative.unwrap(deliveryCost)
+        }(
+            setup.targetChain,
+            address(0x1234123412341234123412341234123412341234),
+            message,
+            TargetNative.wrap(25),
+            Gas.wrap(gasParams.targetGasLimit)
+        );
+        genericRelayer.relay(setup.sourceChain);
     }
 }

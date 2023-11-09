@@ -72,7 +72,7 @@ config.define_bool("wormchain", False, "Enable a wormchain node")
 config.define_bool("ibc_relayer", False, "Enable IBC relayer between cosmos chains")
 config.define_bool("redis", False, "Enable a redis instance")
 config.define_bool("generic_relayer", False, "Enable the generic relayer off-chain component")
-
+config.define_bool("query_server", False, "Enable cross-chain query server")
 
 cfg = config.parse()
 num_guardians = int(cfg.get("num", "1"))
@@ -97,6 +97,7 @@ ibc_relayer = cfg.get("ibc_relayer", ci)
 btc = cfg.get("btc", False)
 redis = cfg.get('redis', ci)
 generic_relayer = cfg.get("generic_relayer", ci)
+query_server = cfg.get("query_server", ci)
 
 if ci:
     guardiand_loglevel = cfg.get("guardiand_loglevel", "warn")
@@ -562,6 +563,16 @@ if ci_tests:
             sync("./testing", "/app/testing"),
         ],
     )
+    docker_build(
+        ref = "query-sdk-test-image",
+        context = ".",
+        dockerfile = "testing/Dockerfile.querysdk.test",
+        only = [],
+        live_update = [
+            sync("./sdk/js/src", "/app/sdk/js-query/src"),
+            sync("./testing", "/app/testing"),
+        ],
+    )
 
     k8s_yaml_with_ns(encode_yaml_stream(set_env_in_jobs(read_yaml_stream("devnet/tests.yaml"), "NUM_GUARDIANS", str(num_guardians))))
 
@@ -583,6 +594,18 @@ if ci_tests:
         labels = ["ci"],
         trigger_mode = trigger_mode,
         resource_deps = [], # uses devnet-consts.json, but wormchain/contracts/tools/test_accountant.sh handles waiting for guardian, not having deps gets the build earlier
+    )
+    k8s_resource(
+        "query-ci-tests",
+        labels = ["ci"],
+        trigger_mode = trigger_mode,
+        resource_deps = [], # node/hack/query/test/test_query.sh handles waiting for guardian, not having deps gets the build earlier
+    )
+    k8s_resource(
+        "query-sdk-ci-tests",
+        labels = ["ci"],
+        trigger_mode = trigger_mode,
+        resource_deps = [], # testing/querysdk.sh handles waiting for query-server, not having deps gets the build earlier
     )
 
 if terra_classic:
@@ -892,4 +915,18 @@ if aptos:
         ],
         labels = ["aptos"],
         trigger_mode = trigger_mode,
+    )
+
+if query_server:
+    k8s_yaml_with_ns("devnet/query-server.yaml")
+
+    k8s_resource(
+        "query-server",
+        resource_deps = ["guardian"],
+        port_forwards = [
+            port_forward(6069, name = "REST [:6069]", host = webHost),
+            port_forward(6068, name = "Status [:6068]", host = webHost)
+        ],
+        labels = ["query-server"],
+        trigger_mode = trigger_mode
     )

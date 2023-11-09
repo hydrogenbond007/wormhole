@@ -7,6 +7,9 @@ metadata:
     app: guardian
 spec:
   ports:
+    - port: 8996
+      name: ccq-p2p
+      protocol: UDP
     - port: 8999
       name: p2p
       protocol: UDP
@@ -100,6 +103,8 @@ spec:
             - ws://eth-devnet:8545
             - --baseRPC
             - ws://eth-devnet:8545
+            - --scrollRPC
+            - ws://eth-devnet:8545
             # - --wormchainURL
             # - wormchain:9090
             # - --accountantKeyPath
@@ -160,7 +165,11 @@ spec:
             - /tmp/data
             - --publicRpcLogDetail
             - "full"
-          # - --chainGovernorEnabled=true
+            # - --chainGovernorEnabled=true
+            - --ccqEnabled=true
+            - --ccqAllowedRequesters=beFA429d57cD18b7F8A4d91A2da9AB4AF05d0FBe,25021A4FCAf61F2EADC8202D3833Df48B2Fa0D54
+            - --ccqAllowedPeers=12D3KooWSnju8zhywCYVi2JwTqky1sySPnmtYLsHHzc4WerMnDQH,12D3KooWM6WqedfR6ehtTd1y6rJu3ZUrEkTjcJJnJZYesjd89zj8
+            # - --logLevel=debug
           securityContext:
             capabilities:
               add:
@@ -171,6 +180,9 @@ spec:
               port: 6060
               path: /readyz
           ports:
+            - containerPort: 8996
+              name: ccq-p2p
+              protocol: UDP
             - containerPort: 8999
               name: p2p
               protocol: UDP
